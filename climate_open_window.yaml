@@ -56,6 +56,6 @@ action:
         sequence:
           - service: climate.set_hvac_mode
             data:
-              hvac_mode: heat
+              hvac_mode: "auto"
             target:
               entity_id: !input climate
