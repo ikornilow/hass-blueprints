@@ -1,0 +1,103 @@
+blueprint:
+  name: Tado CE – Open Window via Contact
+  description: >
+    Set Tado CE open-window mode when a contact sensor is opened and
+    resume or restore the previous state when it is closed.
+  domain: automation
+  source_url: https://github.com/ikornilow/hass-blueprints/blob/main/tado/tado_ce_open_waindows.yaml
+  input:
+    window_sensor:
+      name: Window or door contact sensor
+      description: Contact sensor that indicates the window or door is open.
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class:
+            - window
+            - door
+    climate_entity:
+      name: Tado CE climate entity
+      description: The climate entity for the corresponding Tado zone.
+      selector:
+        entity:
+          domain: climate
+    duration:
+      name: Open-window duration (minutes)
+      description: >
+        Duration for open-window mode in minutes.
+        Use 0 for indefinite (until the window/door is closed).
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 480
+          unit_of_measurement: minutes
+          mode: box
+    restore_mode:
+      name: Close behaviour
+      description: >
+        Choose how to end open-window mode when the contact closes:
+        - Resume schedule: go back to the Tado schedule
+        - Restore previous state: go back to the state before open-window mode.
+      default: resume_schedule
+      selector:
+        select:
+          options:
+            - label: Resume schedule
+              value: resume_schedule
+            - label: Restore previous state
+              value: restore_previous_state
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  window_sensor: !input window_sensor
+  climate_entity: !input climate_entity
+  duration_minutes: !input duration
+  restore_mode: !input restore_mode
+
+trigger:
+  - id: window_open
+    platform: state
+    entity_id: !input window_sensor
+    to: "on"
+  - id: window_closed
+    platform: state
+    entity_id: !input window_sensor
+    to: "off"
+
+condition: []
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: window_open
+        sequence:
+          - service: tado_ce.set_open_window_mode
+            target:
+              entity_id: !input climate_entity
+            data:
+              # tado_ce-Doku: duration 0 = indefinite until window closes
+              duration: "{{ duration_minutes | int * 60 }}"
+      - conditions:
+          - condition: trigger
+            id: window_closed
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ restore_mode == 'resume_schedule' }}"
+                sequence:
+                  - service: tado_ce.resume_schedule
+                    target:
+                      entity_id: !input climate_entity
+              - conditions:
+                  - condition: template
+                    value_template: "{{ restore_mode == 'restore_previous_state' }}"
+                sequence:
+                  - service: tado_ce.restore_previous_state
+                    target:
+                      entity_id: !input climate_entity
+    default: []
